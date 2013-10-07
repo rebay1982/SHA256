@@ -18,7 +18,7 @@ using namespace std;
  * append length of message (before pre-processing), in bits, as 64-bit big-endian integer
  * 
  */
-int preProcess(unsigned char* ppMessage, unsigned char* message, int len)
+int preProcess(unsigned char* &ppMessage, unsigned char* message, int len)
 {
 	//+1 byte for the appended 1 at the end of the message.
 	int paddingSize = (((len + 1) % 64) > 56) ? (56 + (64 - ((len) % 64))) : 56 - ((len) % 64); // TODO: Clean this up and optimize
@@ -151,10 +151,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	cout << "\n56: " << preProcess(nullptr, 56);
 	cout << "\n55: " << preProcess(nullptr, 55);
 	*/
-	unsigned char test[10] = {'a','b','c','d','e','f','g','h','i','j'};
-	unsigned char* ppMessage = NULL;
 
-	int msgLen = preProcess(ppMessage, test, 10);
+	unsigned char test[10] = {'a','b','c','d','e','f','g','h','i','j'};
+	unsigned char* ppM = NULL;
+
+	int msgLen = preProcess(ppM, test, 10);
 
 	return 0;
 }
