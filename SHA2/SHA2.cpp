@@ -37,18 +37,18 @@ int preProcess(unsigned char* &ppMessage, unsigned char* message, int len)
 	return ppMessageLength;
 } 
 
-void scheduler(unsigned char* messageChunk, unsigned int *schedulerArray)
+void scheduler(unsigned char* messageChunk, unsigned int* schedulerArray)
 {
 	// The scheduler array.
 	//unsigned int w[64];				// The scheduler uses a 64 words (32bit/word) schedule array
-	schedulerArray = (unsigned int*)malloc(256);
+	//schedulerArray = (unsigned int*)malloc(256);
 	memcpy(schedulerArray, messageChunk, 64);
 
 	unsigned int s0, s1;			// Scheduler temporary variables
 	for (int i = 16; i < 64; ++i)
 	{
-		s0 = (_rotr(schedulerArray[i-15], 7) ^ _rotr(schedulerArray[i-15], 18) ^ (schedulerArray[i-15] >> 3));
-		s1 = (_rotr(schedulerArray[i-2], 17) ^ _rotr(schedulerArray[i-2],  19) ^ (schedulerArray[i-2] >> 10));
+		s0 = (_rotr(schedulerArray[i-15], 7) ^ (_rotr(schedulerArray[i-15], 18)) ^ (schedulerArray[i-15] >> 3));
+		s1 = (_rotr(schedulerArray[i-2], 17) ^ (_rotr(schedulerArray[i-2],  19)) ^ (schedulerArray[i-2] >> 10));
 		schedulerArray[i] = schedulerArray[i-16] + s0 + schedulerArray[i-7] + s1;
 	}
 }
@@ -99,10 +99,20 @@ void compressor(unsigned int* schedulerArray, s_hashValues &hValues)
 	hValues.h7 += h;
 }
 
-//void hashChunk(
-
-
-void SHA256(unsigned char finalHash[256], unsigned char* message, int len)
+/*
+ * Desc: This method Hashes a message using the SHA256 method.
+ *
+ * Input:	unsigned char finalHash[32]:
+ *				array to contain the final hash (string format)
+ *			unsigned char* message:
+ *				pointer to the message to hash (data or string)
+ *			int len:
+ *				Length of the message passed as input
+ *
+ * Output:	
+ *
+ */
+void SHA256(unsigned char finalHash[32], unsigned char* message, int len)
 {
 	// Initialize the hash values
 	s_hashValues hash;
@@ -116,9 +126,9 @@ void SHA256(unsigned char finalHash[256], unsigned char* message, int len)
 	hash.h7 = 0x5be0cd19;
 
 	// Preprocess the message
-	unsigned char *ppMessage = NULL;
-	int ppMessageLength = preProcess(ppMessage, message, len);
-	int nbChunks = ppMessageLength >> 6 ;	// Devide by 64bytes (512bits).
+	unsigned char *ppMsg = NULL;
+	int ppMsgLen = preProcess(ppMsg, message, len);
+	int nbChunks = ppMsgLen >> 6 ;	// Devide by 64bytes (512bits).
 
 	// Initialize the scheduler array
 	unsigned int* schedulerArray = (unsigned int*) malloc(256);
@@ -126,16 +136,16 @@ void SHA256(unsigned char finalHash[256], unsigned char* message, int len)
 	// For each message chunk, go through the scheduler and compressor
 	for (int i = 0; i < nbChunks; ++i)
 	{
-		scheduler(&ppMessage[i << 6], schedulerArray);
+		scheduler(&ppMsg[i << 6], schedulerArray);
 		compressor(schedulerArray, hash);
 	}
 
 	// Cleanup
 	free(schedulerArray);
-	free(ppMessage);
+	free(ppMsg);
 
 	// return appended hash
-	memcpy(&finalHash[0], &hash, 256);
+	memcpy(&finalHash[0], &hash, 32);
 }
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -152,10 +162,16 @@ int _tmain(int argc, _TCHAR* argv[])
 	cout << "\n55: " << preProcess(nullptr, 55);
 	*/
 
-	unsigned char test[10] = {'a','b','c','d','e','f','g','h','i','j'};
-	unsigned char* ppM = NULL;
+	//unsigned char test[10] = {'a','b','c','d','e','f','g','h','i','j'};
+	//unsigned char* ppM = NULL;
 
-	int msgLen = preProcess(ppM, test, 10);
+	//int msgLen = preProcess(ppM, test, 10);
+
+
+	unsigned char test[] = "";
+	unsigned char finalHash[32];
+	SHA256(finalHash, test, 0);
+
 
 	return 0;
 }
