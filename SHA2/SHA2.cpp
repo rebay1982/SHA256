@@ -5,6 +5,7 @@
 #include "sha2.h"
 
 #include <iostream>
+#include <string.h>
 using namespace std;
 
 /*
@@ -18,34 +19,45 @@ using namespace std;
  * append length of message (before pre-processing), in bits, as 64-bit big-endian integer
  * 
  */
-int preProcess(unsigned char* &ppMessage, unsigned char* message, int len)
+uint preProcess(uchar* &ppMessage, uchar* message, uint len)
 {
-	//+1 byte for the appended 1 at the end of the message.
-	int paddingSize = (((len + 1) % 64) > 56) ? (56 + (64 - ((len) % 64))) : 56 - ((len) % 64); // TODO: Clean this up and optimize
-	int ppMessageLength = len + paddingSize + 8;
+	//+1 byte for the appended 1 at the end of the message.s
+	uint paddingSize = (((len + 1) % 64) > 56) ? (56 + (64 - ((len) % 64))) : 56 - ((len) % 64); // TODO: Clean this up and optimize
+	uint ppMessageLength = len + paddingSize;
 	
-	// Append 1 as the first bit, then fill the padding with 0s
-	ppMessage = (unsigned char *)calloc(ppMessageLength, 1);
-	//ppMessage = (unsigned char *)malloc(ppMessageLength);
-	
+	// Append 1 as the first bit, then fill the padding with 0s (+ padding for bitlength over 64bits)
+	ppMessage = (uchar*)calloc(ppMessageLength + 8, 1);
 	memcpy(ppMessage, message, len);
 	ppMessage[len] = 0x80;
-	//memset((ppMessage + len + 1), 0, (paddingSize - 1) + 8);
 
-	// At the end of the padding, add the length (big endian) of the original message.
-	memcpy((ppMessage + len + paddingSize), &len, sizeof(len));
-	return ppMessageLength;
+	// Make the bit length fit on two unsigned longs (64bit);
+	uint msgBitLen[2] = {0, 0};
+	if ((len * 8) > 0xFFFFFFF) ++msgBitLen[1]; msgBitLen[0] += (len * 8);
+
+	// At the end of the padding, add the bit length (big endian) of the original message.
+	for (int i = 0; i < 4; ++i)
+	{
+		(ppMessage + ppMessageLength)[i]	 = (msgBitLen[1] >> ((3 - i) << 3)) & 0xFF;
+		(ppMessage + ppMessageLength)[i + 4] = (msgBitLen[0] >> ((3 - i) << 3)) & 0xFF;
+	}
+
+	return (ppMessageLength + 8);
 } 
 
-void scheduler(unsigned char* messageChunk, unsigned int* schedulerArray)
+void scheduler(uchar* messageChunk, uint* schedulerArray)
 {
 	// The scheduler array.
-	//unsigned int w[64];				// The scheduler uses a 64 words (32bit/word) schedule array
-	//schedulerArray = (unsigned int*)malloc(256);
-	memcpy(schedulerArray, messageChunk, 64);
+	// Copy over message chunk to first 16 words, switch endianness in the scheduler array (make big-endian)
+	for (int i = 0; i < 16; ++i)
+	{
+		schedulerArray[i] = messageChunk[(i << 2)    ] << 24 |
+							messageChunk[(i << 2) + 1] << 16 |
+							messageChunk[(i << 2) + 2] <<  8 |
+							messageChunk[(i << 2) + 3];
+	}
 
-	unsigned int s0, s1;			// Scheduler temporary variables
-	for (int i = 16; i < 64; ++i)
+	uint s0, s1;			// Scheduler temporary variables
+	for (uint i = 16; i < 64; ++i)
 	{
 		s0 = (_rotr(schedulerArray[i-15], 7) ^ (_rotr(schedulerArray[i-15], 18)) ^ (schedulerArray[i-15] >> 3));
 		s1 = (_rotr(schedulerArray[i-2], 17) ^ (_rotr(schedulerArray[i-2],  19)) ^ (schedulerArray[i-2] >> 10));
@@ -53,28 +65,28 @@ void scheduler(unsigned char* messageChunk, unsigned int* schedulerArray)
 	}
 }
 
-void compressor(unsigned int* schedulerArray, s_hashValues &hValues)
+void compressor(uint* schedulerArray, s_hashValues &hValues)
 {
 	// Compression algorithm temporary variables.
-	unsigned int a = hValues.h0;
-	unsigned int b = hValues.h1;
-	unsigned int c = hValues.h2;
-	unsigned int d = hValues.h3;
-	unsigned int e = hValues.h4;
-	unsigned int f = hValues.h5;
-	unsigned int g = hValues.h6;
-	unsigned int h = hValues.h7;
+	uint a = hValues.h0;
+	uint b = hValues.h1;
+	uint c = hValues.h2;
+	uint d = hValues.h3;
+	uint e = hValues.h4;
+	uint f = hValues.h5;
+	uint g = hValues.h6;
+	uint h = hValues.h7;
 	
 	// Declare temporary work variables
-	unsigned int S1, ch, temp1, S0, maj, temp2;
-	for (int i = 0; i < 64; ++i)
+	uint S1, ch, temp1, S0, maj, temp2;
+	for (uint i = 0; i < 64; ++i)
 	{
 		// Main compression function algorithm.
 		S1 = _rotr(e, 6) ^ _rotr(e, 11) ^ _rotr(e, 25);
-		ch = (e & f) ^ ((!e) & g);
+		ch = (e & f) ^ ((~e) & g);
 		temp1 = h + S1 + ch + k[i] + schedulerArray[i];
 		S0 = _rotr(a, 2) ^ _rotr(a, 13) ^ _rotr(a, 22);
-		maj = (a & b) ^ (a & c) ^ (b &c);
+		maj = (a & b) ^ (a & c) ^ (b & c);
 		temp2 = S0 + maj;
 
 		// Affect working variables.
@@ -112,10 +124,12 @@ void compressor(unsigned int* schedulerArray, s_hashValues &hValues)
  * Output:	
  *
  */
-void SHA256(unsigned char finalHash[32], unsigned char* message, int len)
+void SHA256(uchar finalHash[32], uchar* message, uint len)
 {
 	// Initialize the hash values
 	s_hashValues hash;
+
+	// Big-endian constants
 	hash.h0 = 0x6a09e667;
 	hash.h1 = 0xbb67ae85;
 	hash.h2 = 0x3c6ef372;
@@ -125,16 +139,26 @@ void SHA256(unsigned char finalHash[32], unsigned char* message, int len)
 	hash.h6 = 0x1f83d9ab;
 	hash.h7 = 0x5be0cd19;
 
+	// Little-endian constants
+	//hash.h0 = 0x67e6096a;
+	//hash.h1 = 0x85ae67bb;
+	//hash.h2 = 0x72f36e3c;
+	//hash.h3 = 0x3af54fa5;
+	//hash.h4 = 0x7f520e51;
+	//hash.h5 = 0x8c68059b;
+	//hash.h6 = 0xabd9831f;
+	//hash.h7 = 0x19cde05b;
+
 	// Preprocess the message
-	unsigned char *ppMsg = NULL;
-	int ppMsgLen = preProcess(ppMsg, message, len);
-	int nbChunks = ppMsgLen >> 6 ;	// Devide by 64bytes (512bits).
+	uchar* ppMsg = NULL;
+	uint ppMsgLen = preProcess(ppMsg, message, len);
+	uint nbChunks = ppMsgLen >> 6 ;	// Devide by 64bytes (512bits).
 
 	// Initialize the scheduler array
-	unsigned int* schedulerArray = (unsigned int*) malloc(256);
+	uint* schedulerArray = (uint*) malloc(256);
 
 	// For each message chunk, go through the scheduler and compressor
-	for (int i = 0; i < nbChunks; ++i)
+	for (uint i = 0; i < nbChunks; ++i)
 	{
 		scheduler(&ppMsg[i << 6], schedulerArray);
 		compressor(schedulerArray, hash);
@@ -144,35 +168,41 @@ void SHA256(unsigned char finalHash[32], unsigned char* message, int len)
 	free(schedulerArray);
 	free(ppMsg);
 
-	// return appended hash
-	memcpy(&finalHash[0], &hash, 32);
+	// Return appended hash in big-endian
+	for (int i = 0; i < 4; ++i)
+	{
+		finalHash[0  + i] = ((uchar*)&hash.h0)[3 - i];
+		finalHash[4  + i] = ((uchar*)&hash.h1)[3 - i];
+		finalHash[8  + i] = ((uchar*)&hash.h2)[3 - i];
+		finalHash[12 + i] = ((uchar*)&hash.h3)[3 - i];
+		finalHash[16 + i] = ((uchar*)&hash.h4)[3 - i];
+		finalHash[20 + i] = ((uchar*)&hash.h5)[3 - i];
+		finalHash[24 + i] = ((uchar*)&hash.h6)[3 - i];
+		finalHash[28 + i] = ((uchar*)&hash.h7)[3 - i];
+	}
+}
+
+void displayHash(uchar hash[32])
+{
+	printf("0x");
+	
+	for (int i = 0; i < 32; ++i)
+	{
+		printf("%x", hash[i]);
+	}
+
+	printf("\n");
 }
 
 int _tmain(int argc, _TCHAR* argv[])
 {
+	// Example on ""
+	uchar test[] = "The quick brown fox jumps over the lazy dog";
+	uchar finalHash[32];
+	SHA256(finalHash, test, 43);
 
+	displayHash(finalHash);
 
-	// Test functions
-	/*
-	cout << "10: " << preProcess(nullptr, 10);
-	cout << "\n512: " << preProcess(nullptr, 512);
-	cout << "\n510: " << preProcess(nullptr, 510);
-	cout << "\n0: " << preProcess(nullptr, 0);
-	cout << "\n56: " << preProcess(nullptr, 56);
-	cout << "\n55: " << preProcess(nullptr, 55);
-	*/
-
-	//unsigned char test[10] = {'a','b','c','d','e','f','g','h','i','j'};
-	//unsigned char* ppM = NULL;
-
-	//int msgLen = preProcess(ppM, test, 10);
-
-
-	unsigned char test[] = "";
-	unsigned char finalHash[32];
-	SHA256(finalHash, test, 0);
-
-
+	// 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 	return 0;
 }
-
